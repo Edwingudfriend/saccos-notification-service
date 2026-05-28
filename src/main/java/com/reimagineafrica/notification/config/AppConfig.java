@@ -165,13 +165,4 @@ class RabbitMQConfig {
         return t;
     }
 
-    @Bean
-    public org.springframework.amqp.rabbit.config.SimpleRabbitListenerContainerFactory
-            rabbitListenerContainerFactory(ConnectionFactory cf) {
-        org.springframework.amqp.rabbit.config.SimpleRabbitListenerContainerFactory factory =
-                new org.springframework.amqp.rabbit.config.SimpleRabbitListenerContainerFactory();
-        factory.setConnectionFactory(cf);
-        factory.setMessageConverter(messageConverter());
-        return factory;
-    }
 }
