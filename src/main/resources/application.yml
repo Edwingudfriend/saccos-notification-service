@@ -17,6 +17,9 @@ spring:
     hibernate:
       ddl-auto: validate
     show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MariaDBDialect
 
   flyway:
     enabled: true
@@ -32,48 +35,20 @@ spring:
 jwt:
   secret: ${JWT_SECRET}
 
-# NextSMS — primary SMS gateway for Tanzania
 nextsms:
-  base-url: ${NEXTSMS_BASE_URL:https://messaging-service.co.tz}
-  username: ${NEXTSMS_USERNAME}
-  password: ${NEXTSMS_PASSWORD}
+  username: ${NEXTSMS_USERNAME:}
+  password: ${NEXTSMS_PASSWORD:}
   sender-id: SACCOS
-
-# Twilio WhatsApp — guarantor consent, high-value alerts
-twilio:
-  account-sid: ${TWILIO_ACCOUNT_SID:not-configured}
-  auth-token:  ${TWILIO_AUTH_TOKEN:not-configured}
-  whatsapp-from: ${TWILIO_WHATSAPP_FROM:whatsapp:+14155238886}
-  enabled: ${TWILIO_ENABLED:false}
-
-# FCM — Flutter mobile push
-fcm:
-  server-key: ${FCM_SERVER_KEY:not-configured}
-  enabled: ${FCM_ENABLED:false}
-
-# Retry config
-notification:
-  max-retries: 3
-  retry-delay-seconds: 60
-  default-language: SW   # SW | EN
+  base-url: https://messaging-service.co.tz/api/sms/v1/text/single
 
 rabbitmq:
   exchange: saccos.events
-  queues:
-    member-created:         member.created
-    loan-approved:          loan.approved
-    loan-rejected:          loan.rejected
-    loan-disbursed:         loan.disbursed
-    contribution-missed:    contribution.missed
-    guarantor-consent:      guarantor.consent.requested
-    dividend-declared:      dividend.declared
-    security-audit:         security.audit.events
 
 management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics
+        include: health,info
 
 logging:
   level:
