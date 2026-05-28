@@ -38,7 +38,7 @@ jwt:
 nextsms:
   username: ${NEXTSMS_USERNAME:}
   password: ${NEXTSMS_PASSWORD:}
-  sender-id: SACCOS
+  sender-id: ${NEXTSMS_SENDER_ID:SmartsSMS}
   base-url: https://messaging-service.co.tz/api/sms/v1/text/single
 
 rabbitmq:
