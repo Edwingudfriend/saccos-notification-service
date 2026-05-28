@@ -1,56 +1,71 @@
 package com.reimagineafrica.notification.client;
 
+import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 
-import java.util.Base64;
 import java.util.Map;
 
 @Component
+@RequiredArgsConstructor
 public class NextSmsClient {
+
+    private static final Logger log = LoggerFactory.getLogger(NextSmsClient.class);
 
     private final WebClient.Builder webClientBuilder;
 
-    @Value("${nextsms.base-url}")
-    private String baseUrl;
     @Value("${nextsms.username}")
     private String username;
+
     @Value("${nextsms.password}")
     private String password;
+
     @Value("${nextsms.sender-id}")
     private String senderId;
 
-    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(NextSmsClient.class);
+    @Value("${nextsms.base-url}")
+    private String baseUrl;
 
-    public NextSmsClient(WebClient.Builder webClientBuilder) {
-        this.webClientBuilder = webClientBuilder;
-    }
+    public boolean sendSms(String phoneNumber, String message) {
+        if (username == null || username.isBlank()) {
+            log.warn("NextSMS not configured — skipping SMS to {}", phoneNumber);
+            return false;
+        }
+        try {
+            String phone = normalizePhone(phoneNumber);
+            Map<String, Object> body = Map.of(
+                "from",    senderId,
+                "to",      phone,
+                "text",    message
+            );
+            String response = webClientBuilder
+                    .baseUrl(baseUrl)
+                    .build()
+                    .post()
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .headers(h -> h.setBasicAuth(username, password))
+                    .bodyValue(body)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block();
 
-    public void sendSms(String phoneNumber, String message) {
-        String normalized = normalizePhone(phoneNumber);
-        String credentials = Base64.getEncoder()
-                .encodeToString((username + ":" + password).getBytes());
-
-        webClientBuilder.baseUrl(baseUrl).build()
-                .post()
-                .uri("/api/sms/v1/text/single")
-                .header("Authorization", "Basic " + credentials)
-                .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(Map.of("from", senderId, "to", normalized, "text", message))
-                .retrieve()
-                .bodyToMono(Map.class)
-                .subscribe(
-                    resp -> log.info("SMS sent to {} — response: {}", normalized, resp),
-                    err  -> { throw new RuntimeException("NextSMS failed: " + err.getMessage()); }
-                );
+            log.info("SMS sent to {} — response: {}", phone, response);
+            return true;
+        } catch (Exception e) {
+            log.error("Failed to send SMS to {}: {}", phoneNumber, e.getMessage());
+            return false;
+        }
     }
 
     private String normalizePhone(String phone) {
-        // Ensure Tanzania format: +255XXXXXXXXX
-        if (phone.startsWith("0")) return "+255" + phone.substring(1);
-        if (phone.startsWith("255")) return "+" + phone;
+        if (phone == null) return "";
+        phone = phone.replaceAll("[^0-9+]", "");
+        if (phone.startsWith("0")) phone = "255" + phone.substring(1);
+        if (phone.startsWith("+")) phone = phone.substring(1);
         return phone;
     }
 }
