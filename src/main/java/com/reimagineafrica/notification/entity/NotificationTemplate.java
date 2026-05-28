@@ -1,8 +1,11 @@
 package com.reimagineafrica.notification.entity;
 
+import com.reimagineafrica.notification.enums.NotificationChannel;
+import com.reimagineafrica.notification.enums.NotificationEvent;
 import jakarta.persistence.*;
 import lombok.*;
-import java.time.LocalDateTime;
+
+import java.util.Map;
 import java.util.UUID;
 
 @Entity
@@ -11,44 +14,41 @@ import java.util.UUID;
 public class NotificationTemplate {
 
     @Id
-    @Column(name = "id", updatable = false, length = 36)
+    @Column(name = "id", length = 36)
     @Builder.Default
     private String id = UUID.randomUUID().toString();
 
-    @Column(name = "event_type", nullable = false, length = 100)
-    private String eventType;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "event", nullable = false, length = 50)
+    private NotificationEvent event;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "channel", nullable = false, length = 20)
-    private String channel;
+    private NotificationChannel channel;
 
-    @Column(name = "language", nullable = false, length = 5)
+    @Column(name = "language", nullable = false, length = 10)
     @Builder.Default
-    private String language = "SW";
+    private String language = "sw";
 
-    @Column(name = "subject", length = 200)
+    @Column(name = "subject", length = 300)
     private String subject;
 
-    @Column(name = "template", nullable = false, columnDefinition = "TEXT")
-    private String template;
+    @Column(name = "body", nullable = false, columnDefinition = "TEXT")
+    private String body;
 
     @Column(name = "active", nullable = false)
     @Builder.Default
     private boolean active = true;
 
-    @Column(name = "created_at", updatable = false)
-    @Builder.Default
-    private LocalDateTime createdAt = LocalDateTime.now();
-
     /**
-     * Fills template placeholders with actual values.
-     * Template: "Karibu {name}! Namba yako ni {memberNumber}"
-     * Variables: {name="John", memberNumber="RA-2026-0001"}
+     * Replace {{placeholder}} tokens with values from the map.
      */
-    public String render(java.util.Map<String, String> variables) {
-        String result = template;
-        for (var entry : variables.entrySet()) {
-            result = result.replace("{" + entry.getKey() + "}", entry.getValue() != null ? entry.getValue() : "");
+    public String render(Map<String, String> params) {
+        if (params == null || params.isEmpty()) return body;
+        String rendered = body;
+        for (Map.Entry<String, String> entry : params.entrySet()) {
+            rendered = rendered.replace("{{" + entry.getKey() + "}}", entry.getValue() != null ? entry.getValue() : "");
         }
-        return result;
+        return rendered;
     }
 }
