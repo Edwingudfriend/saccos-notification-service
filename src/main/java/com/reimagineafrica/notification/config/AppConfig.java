@@ -126,7 +126,7 @@ class SecurityConfig {
 // RABBITMQ — all queues declared here so consumers can start
 // ─────────────────────────────────────────────────────────────────
 @Configuration
-@org.springframework.amqp.rabbit.annotation.EnableRabbit
+
 class RabbitMQConfig {
 
     @Value("${rabbitmq.exchange}")
