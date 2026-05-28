@@ -1,99 +1,50 @@
 -- ============================================================
 -- V1__notification_schema.sql
--- Notification Service — Full Schema
 -- ============================================================
 
--- ── Notifications log ─────────────────────────────────────
 CREATE TABLE IF NOT EXISTS notifications (
     id              VARCHAR(36)     NOT NULL DEFAULT (UUID()),
-    recipient_id    VARCHAR(36)     NOT NULL,   -- userId or memberId
-    recipient_phone VARCHAR(20),
-    recipient_email VARCHAR(150),
-    recipient_fcm   VARCHAR(500),               -- FCM token for push
-
-    channel         VARCHAR(20)     NOT NULL,   -- SMS | PUSH | WHATSAPP | EMAIL
-    event_type      VARCHAR(100)    NOT NULL,   -- MEMBER_CREATED | LOAN_APPROVED etc.
-    subject         VARCHAR(200),               -- push/email subject
-    message         TEXT            NOT NULL,
-    language        VARCHAR(5)      NOT NULL DEFAULT 'SW',
-
-    status          VARCHAR(20)     NOT NULL DEFAULT 'PENDING',  -- PENDING | SENT | FAILED | RETRYING
-    attempts        INT             NOT NULL DEFAULT 0,
-    max_attempts    INT             NOT NULL DEFAULT 3,
-    last_error      VARCHAR(500),
+    member_id       VARCHAR(36)     NOT NULL,
+    reference_id    VARCHAR(100),
+    event           VARCHAR(50)     NOT NULL,
+    channel         VARCHAR(20)     NOT NULL,
+    recipient       VARCHAR(200)    NOT NULL,
+    subject         VARCHAR(300),
+    body            TEXT            NOT NULL,
+    status          VARCHAR(20)     NOT NULL DEFAULT 'PENDING',
+    retry_count     INT             NOT NULL DEFAULT 0,
+    error_message   TEXT,
     sent_at         DATETIME,
-
-    tenant_id       VARCHAR(50)     NOT NULL DEFAULT 'default',
-    reference_id    VARCHAR(36),                -- loan ID, member ID etc.
-    reference_type  VARCHAR(50),                -- LOAN | MEMBER | CONTRIBUTION
-
     created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-
+    tenant_id       VARCHAR(50)     NOT NULL DEFAULT 'default',
     PRIMARY KEY (id),
-    INDEX idx_notif_recipient   (recipient_id),
-    INDEX idx_notif_status      (status, attempts),
-    INDEX idx_notif_event       (event_type, tenant_id),
-    INDEX idx_notif_created     (created_at),
-    INDEX idx_notif_reference   (reference_type, reference_id)
+    INDEX idx_notif_member  (member_id),
+    INDEX idx_notif_ref     (reference_id),
+    INDEX idx_notif_status  (status),
+    INDEX idx_notif_tenant  (tenant_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ── Notification templates ─────────────────────────────────
 CREATE TABLE IF NOT EXISTS notification_templates (
     id          VARCHAR(36)     NOT NULL DEFAULT (UUID()),
-    event_type  VARCHAR(100)    NOT NULL,
+    event       VARCHAR(50)     NOT NULL,
     channel     VARCHAR(20)     NOT NULL,
-    language    VARCHAR(5)      NOT NULL DEFAULT 'SW',
-    subject     VARCHAR(200),
-    template    TEXT            NOT NULL,   -- uses {name}, {amount}, {date} placeholders
+    language    VARCHAR(10)     NOT NULL DEFAULT 'sw',
+    subject     VARCHAR(300),
+    body        TEXT            NOT NULL,
     active      BOOLEAN         NOT NULL DEFAULT TRUE,
-    created_at  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
     PRIMARY KEY (id),
-    UNIQUE KEY uq_template (event_type, channel, language)
+    UNIQUE KEY uq_template (event, channel, language)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ── Seed default templates ─────────────────────────────────
-INSERT IGNORE INTO notification_templates (event_type, channel, language, template) VALUES
-
--- Member created
-('MEMBER_CREATED', 'SMS', 'SW',
- 'Karibu {name}! Umesajiliwa kwa SACCOS. Namba yako ya mwanachama ni {memberNumber}. Wasiliana nasi kwa maswali yoyote.'),
-('MEMBER_CREATED', 'SMS', 'EN',
- 'Welcome {name}! You have been registered with SACCOS. Your member number is {memberNumber}. Contact us for any queries.'),
-
--- Loan approved
-('LOAN_APPROVED', 'SMS', 'SW',
- 'Hongera {name}! Mkopo wako wa TZS {amount} umeidhinishwa. Utapitiwa hivi karibuni.'),
-('LOAN_APPROVED', 'PUSH', 'SW',
- 'Mkopo wa TZS {amount} umeidhinishwa!'),
-('LOAN_APPROVED', 'SMS', 'EN',
- 'Congratulations {name}! Your loan of TZS {amount} has been approved. Disbursement will follow shortly.'),
-
--- Loan rejected
-('LOAN_REJECTED', 'SMS', 'SW',
- 'Samahani {name}. Ombi lako la mkopo wa TZS {amount} limekataliwa. Sababu: {reason}. Wasiliana na ofisi kwa maelezo zaidi.'),
-('LOAN_REJECTED', 'SMS', 'EN',
- 'Sorry {name}. Your loan application of TZS {amount} was rejected. Reason: {reason}. Contact the office for details.'),
-
--- Loan disbursed
-('LOAN_DISBURSED', 'SMS', 'SW',
- '{name}, mkopo wako wa TZS {amount} umetumwa kwenye akaunti yako. Tarehe ya kwanza kulipa: {dueDate}.'),
-('LOAN_DISBURSED', 'PUSH', 'SW',
- 'TZS {amount} imetumwa kwenye akaunti yako!'),
-
--- Contribution missed
-('CONTRIBUTION_MISSED', 'SMS', 'SW',
- '{name}, bado haujalipia mchango wa mwezi huu (TZS {amount}). Tafadhali lipa kabla ya {dueDate} kuepuka adhabu.'),
-
--- Guarantor consent
-('GUARANTOR_CONSENT_REQUESTED', 'WHATSAPP', 'SW',
- 'Habari {name}! Umeitwa kuwa mdhamini wa {borrowerName} katika mkopo wa TZS {amount}. Jibu YES kukubali au NO kukataa.'),
-('GUARANTOR_CONSENT_REQUESTED', 'SMS', 'SW',
- '{name}, {borrowerName} anakuomba udhamini wa mkopo wa TZS {amount}. Piga simu ofisi kukubali au kukataa.'),
-
--- Dividend declared
-('DIVIDEND_DECLARED', 'SMS', 'SW',
- 'Habari njema {name}! Gawio la TZS {amount} limetangazwa. Utapata TZS {yourShare} kulingana na hisa zako {shares}.'),
-('DIVIDEND_DECLARED', 'PUSH', 'SW',
- 'Gawio la TZS {yourShare} limetangazwa!');
+-- ── Seed Swahili SMS templates ─────────────────────────────
+INSERT IGNORE INTO notification_templates (id, event, channel, language, body) VALUES
+(UUID(), 'MEMBER_CREATED',              'SMS', 'sw', 'Karibu SACCOS! Namba yako ya uanachama ni {{memberNumber}}. Tafadhali kamilisha uthibitisho wa KYC.'),
+(UUID(), 'MEMBER_ACTIVATED',            'SMS', 'sw', 'Hongera {{name}}! Akaunti yako RA-SACCOS imethibitishwa. Namba: {{memberNumber}}.'),
+(UUID(), 'LOAN_APPROVED',               'SMS', 'sw', 'Mkopo wako wa TZS {{amount}} umeidhinishwa. Utaingizwa akaunti yako hivi karibuni. Kumb: {{reference}}.'),
+(UUID(), 'LOAN_REJECTED',               'SMS', 'sw', 'Ombi lako la mkopo (Kumb: {{reference}}) limekataliwa. Sababu: {{reason}}. Wasiliana na ofisi kwa maelezo.'),
+(UUID(), 'LOAN_DISBURSED',              'SMS', 'sw', 'TZS {{amount}} imetumwa akaunti yako. Kumb: {{reference}}. Malipo ya kwanza: {{firstPaymentDate}}.'),
+(UUID(), 'CONTRIBUTION_MISSED',         'SMS', 'sw', 'Mchango wako wa mwezi huu haujafika. Tafadhali lipa TZS {{amount}} kabla ya {{dueDate}} kuepuka adhabu.'),
+(UUID(), 'GUARANTOR_CONSENT_REQUESTED', 'SMS', 'sw', '{{borrowerName}} amekuweka mdhamini wa mkopo wa TZS {{amount}}. Jibu 1 kukubali, 2 kukataa. Kumb: {{reference}}.'),
+(UUID(), 'DIVIDEND_DECLARED',           'SMS', 'sw', 'Gawio la {{year}} limetangazwa. Sehemu yako: TZS {{amount}}. Itaingizwa akaunti tarehe {{paymentDate}}.'),
+(UUID(), 'OTP_VERIFICATION',            'SMS', 'sw', 'Nambari yako ya uthibitisho ni {{otp}}. Inatumika kwa dakika 5 peke yake. Usimwambie mtu.'),
+(UUID(), 'LOAN_REPAYMENT_REMINDER',     'SMS', 'sw', 'Ukumbusho: Malipo ya mkopo TZS {{amount}} yanastahili tarehe {{dueDate}}. Kumb: {{reference}}.');
