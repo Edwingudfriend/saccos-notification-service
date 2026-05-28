@@ -9,7 +9,10 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
-import org.springframework.amqp.core.*;
+import org.springframework.amqp.core.Binding;
+import org.springframework.amqp.core.BindingBuilder;
+import org.springframework.amqp.core.QueueBuilder;
+import org.springframework.amqp.core.TopicExchange;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
@@ -18,6 +21,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
 import org.springframework.lang.NonNull;
+import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -36,89 +40,122 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
+// ─────────────────────────────────────────────────────────────────
+// JWT FILTER
+// ─────────────────────────────────────────────────────────────────
 @Component
-class NotifJwtFilter extends OncePerRequestFilter {
+class NotificationJwtFilter extends OncePerRequestFilter {
+
     @Value("${jwt.secret}")
     private String jwtSecret;
 
     @Override
-    protected void doFilterInternal(@NonNull HttpServletRequest req,
-                                    @NonNull HttpServletResponse res,
-                                    @NonNull FilterChain chain) throws ServletException, IOException {
-        String auth = req.getHeader("Authorization");
-        if (auth != null && auth.startsWith("Bearer ")) {
-            try {
-                String token = auth.substring(7);
-                SecretKey key = Keys.hmacShaKeyFor(Decoders.BASE64.decode(jwtSecret));
-                Claims claims = Jwts.parser().verifyWith(key).build()
-                        .parseSignedClaims(token).getPayload();
-                String username = claims.getSubject();
-                String role     = claims.get("role", String.class);
-                String userId   = claims.get("userId", String.class);
-                if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                    List<SimpleGrantedAuthority> authorities = new ArrayList<>();
-                    authorities.add(new SimpleGrantedAuthority("ROLE_" + role));
-                    Object perms = claims.get("permissions");
-                    if (perms instanceof List<?> p) p.forEach(x -> authorities.add(new SimpleGrantedAuthority(x.toString())));
-                    var a = new UsernamePasswordAuthenticationToken(username, null, authorities);
-                    a.setDetails(new WebAuthenticationDetailsSource().buildDetails(req));
-                    SecurityContextHolder.getContext().setAuthentication(a);
-                    req.setAttribute("userId", userId);
-                }
-            } catch (Exception e) { logger.warn("JWT error: " + e.getMessage()); }
+    protected void doFilterInternal(@NonNull HttpServletRequest request,
+                                    @NonNull HttpServletResponse response,
+                                    @NonNull FilterChain chain)
+            throws ServletException, IOException {
+
+        String authHeader = request.getHeader("Authorization");
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            chain.doFilter(request, response);
+            return;
         }
-        chain.doFilter(req, res);
+        try {
+            String token = authHeader.substring(7);
+            SecretKey key = Keys.hmacShaKeyFor(Decoders.BASE64.decode(jwtSecret));
+            Claims claims = Jwts.parser().verifyWith(key).build()
+                    .parseSignedClaims(token).getPayload();
+
+            String username = claims.getSubject();
+            String role     = claims.get("role", String.class);
+
+            if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+                List<SimpleGrantedAuthority> authorities = new ArrayList<>();
+                authorities.add(new SimpleGrantedAuthority("ROLE_" + role));
+                Object perms = claims.get("permissions");
+                if (perms instanceof List<?> permList) {
+                    permList.forEach(p -> authorities.add(new SimpleGrantedAuthority(p.toString())));
+                }
+                var auth = new UsernamePasswordAuthenticationToken(username, null, authorities);
+                auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                SecurityContextHolder.getContext().setAuthentication(auth);
+                request.setAttribute("tenantId", claims.get("tenantId", String.class));
+                request.setAttribute("userId",   claims.get("userId",   String.class));
+            }
+        } catch (Exception e) {
+            logger.warn("JWT validation failed: " + e.getMessage());
+        }
+        chain.doFilter(request, response);
     }
 }
 
+// ─────────────────────────────────────────────────────────────────
+// SECURITY CONFIG
+// ─────────────────────────────────────────────────────────────────
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity(prePostEnabled = true)
+@EnableScheduling
 @RequiredArgsConstructor
 class SecurityConfig {
-    private final NotifJwtFilter jwtFilter;
+
+    private final NotificationJwtFilter jwtFilter;
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-        return http.csrf(c -> c.disable())
+        return http
+            .csrf(c -> c.disable())
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-            .authorizeHttpRequests(a -> a
+            .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/actuator/health", "/api-docs/**", "/swagger-ui/**").permitAll()
-                .anyRequest().authenticated())
+                .anyRequest().authenticated()
+            )
             .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
-            .exceptionHandling(e -> e.authenticationEntryPoint((req, res, ex) -> {
-                res.setStatus(HttpStatus.UNAUTHORIZED.value());
-                res.setContentType("application/json");
-                res.getWriter().write("{\"status\":401,\"error\":\"Unauthorized\"}");
-            })).build();
+            .exceptionHandling(ex -> ex
+                .authenticationEntryPoint((req, res, e) -> {
+                    res.setStatus(HttpStatus.UNAUTHORIZED.value());
+                    res.setContentType("application/json");
+                    res.getWriter().write("{\"status\":401,\"error\":\"Unauthorized\"}");
+                })
+            )
+            .build();
     }
 }
 
+// ─────────────────────────────────────────────────────────────────
+// RABBITMQ — all queues declared here so consumers can start
+// ─────────────────────────────────────────────────────────────────
 @Configuration
 class RabbitMQConfig {
+
     @Value("${rabbitmq.exchange}")
-    private String exchange;
+    private String exchangeName;
 
-    @Bean public TopicExchange saccoExchange() { return new TopicExchange(exchange, true, false); }
+    @Bean
+    public TopicExchange saccoExchange() {
+        return new TopicExchange(exchangeName, true, false);
+    }
 
-    // Declare all queues this service consumes
-    @Bean public org.springframework.amqp.core.Queue memberCreatedQ()       { return QueueBuilder.durable("member.created").build(); }
-    @Bean public org.springframework.amqp.core.Queue loanApprovedQ()        { return QueueBuilder.durable("loan.approved").build(); }
-    @Bean public org.springframework.amqp.core.Queue loanRejectedQ()        { return QueueBuilder.durable("loan.rejected").build(); }
-    @Bean public org.springframework.amqp.core.Queue loanDisbursedQ()       { return QueueBuilder.durable("loan.disbursed").build(); }
-    @Bean public org.springframework.amqp.core.Queue contributionMissedQ()  { return QueueBuilder.durable("contribution.missed").build(); }
-    @Bean public org.springframework.amqp.core.Queue guarantorConsentQ()    { return QueueBuilder.durable("guarantor.consent.requested").build(); }
-    @Bean public org.springframework.amqp.core.Queue dividendDeclaredQ()    { return QueueBuilder.durable("dividend.declared").build(); }
+    @Bean public org.springframework.amqp.core.Queue memberCreatedQueue()              { return QueueBuilder.durable("member.created").build(); }
+    @Bean public org.springframework.amqp.core.Queue loanApprovedQueue()               { return QueueBuilder.durable("loan.approved").build(); }
+    @Bean public org.springframework.amqp.core.Queue loanRejectedQueue()               { return QueueBuilder.durable("loan.rejected").build(); }
+    @Bean public org.springframework.amqp.core.Queue loanDisbursedQueue()              { return QueueBuilder.durable("loan.disbursed").build(); }
+    @Bean public org.springframework.amqp.core.Queue contributionMissedQueue()         { return QueueBuilder.durable("contribution.missed").build(); }
+    @Bean public org.springframework.amqp.core.Queue guarantorConsentQueue()           { return QueueBuilder.durable("guarantor.consent.requested").build(); }
+    @Bean public org.springframework.amqp.core.Queue dividendDeclaredQueue()           { return QueueBuilder.durable("dividend.declared").build(); }
 
-    @Bean public Binding memberCreatedBinding()      { return BindingBuilder.bind(memberCreatedQ()).to(saccoExchange()).with("member.created"); }
-    @Bean public Binding loanApprovedBinding()       { return BindingBuilder.bind(loanApprovedQ()).to(saccoExchange()).with("loan.approved"); }
-    @Bean public Binding loanRejectedBinding()       { return BindingBuilder.bind(loanRejectedQ()).to(saccoExchange()).with("loan.rejected"); }
-    @Bean public Binding loanDisbursedBinding()      { return BindingBuilder.bind(loanDisbursedQ()).to(saccoExchange()).with("loan.disbursed"); }
-    @Bean public Binding contributionMissedBinding() { return BindingBuilder.bind(contributionMissedQ()).to(saccoExchange()).with("contribution.missed"); }
-    @Bean public Binding guarantorConsentBinding()   { return BindingBuilder.bind(guarantorConsentQ()).to(saccoExchange()).with("guarantor.consent.requested"); }
-    @Bean public Binding dividendDeclaredBinding()   { return BindingBuilder.bind(dividendDeclaredQ()).to(saccoExchange()).with("dividend.declared"); }
+    @Bean public Binding memberCreatedBinding()       { return BindingBuilder.bind(memberCreatedQueue()).to(saccoExchange()).with("member.created"); }
+    @Bean public Binding loanApprovedBinding()        { return BindingBuilder.bind(loanApprovedQueue()).to(saccoExchange()).with("loan.approved"); }
+    @Bean public Binding loanRejectedBinding()        { return BindingBuilder.bind(loanRejectedQueue()).to(saccoExchange()).with("loan.rejected"); }
+    @Bean public Binding loanDisbursedBinding()       { return BindingBuilder.bind(loanDisbursedQueue()).to(saccoExchange()).with("loan.disbursed"); }
+    @Bean public Binding contributionMissedBinding()  { return BindingBuilder.bind(contributionMissedQueue()).to(saccoExchange()).with("contribution.missed"); }
+    @Bean public Binding guarantorConsentBinding()    { return BindingBuilder.bind(guarantorConsentQueue()).to(saccoExchange()).with("guarantor.consent.requested"); }
+    @Bean public Binding dividendDeclaredBinding()    { return BindingBuilder.bind(dividendDeclaredQueue()).to(saccoExchange()).with("dividend.declared"); }
 
-    @Bean public Jackson2JsonMessageConverter messageConverter() { return new Jackson2JsonMessageConverter(); }
+    @Bean
+    public Jackson2JsonMessageConverter messageConverter() {
+        return new Jackson2JsonMessageConverter();
+    }
 
     @Bean
     public RabbitTemplate rabbitTemplate(ConnectionFactory cf) {
