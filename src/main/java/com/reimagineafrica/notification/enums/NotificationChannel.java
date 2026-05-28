@@ -1,3 +1,5 @@
 package com.reimagineafrica.notification.enums;
 
-public enum NotificationChannel { SMS, PUSH, WHATSAPP, EMAIL }
+public enum NotificationChannel {
+    SMS, PUSH, WHATSAPP, EMAIL
+}
