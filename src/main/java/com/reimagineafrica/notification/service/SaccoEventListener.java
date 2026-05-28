@@ -1,5 +1,7 @@
 package com.reimagineafrica.notification.service;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.reimagineafrica.notification.enums.NotificationChannel;
 import com.reimagineafrica.notification.enums.NotificationEvent;
 import lombok.RequiredArgsConstructor;
@@ -15,154 +17,127 @@ import java.util.Map;
 public class SaccoEventListener {
 
     private static final Logger log = LoggerFactory.getLogger(SaccoEventListener.class);
-
     private final NotificationService notificationService;
-
-    // ── member.created ────────────────────────────────────────────
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @RabbitListener(queues = "member.created")
-    public void onMemberCreated(Map<String, Object> event) {
+    public void onMemberCreated(String message) {
         try {
-            String memberId     = str(event, "memberId");
-            String phoneNumber  = str(event, "phoneNumber");
-            String memberNumber = str(event, "memberNumber");
-            String tenantId     = str(event, "tenantId");
-
+            Map<String, Object> e = parse(message);
+            log.info("Received member.created event: {}", e.get("memberNumber"));
             notificationService.sendFromTemplate(
-                    memberId, memberNumber,
-                    NotificationEvent.MEMBER_CREATED,
-                    NotificationChannel.SMS,
-                    phoneNumber,
-                    Map.of("memberNumber", memberNumber),
-                    tenantId
+                    str(e, "memberId"), str(e, "memberNumber"),
+                    NotificationEvent.MEMBER_CREATED, NotificationChannel.SMS,
+                    str(e, "phoneNumber"),
+                    Map.of("memberNumber", str(e, "memberNumber")),
+                    str(e, "tenantId")
             );
-            log.info("Processed member.created for memberId={}", memberId);
-        } catch (Exception e) {
-            log.error("Failed to process member.created event: {}", e.getMessage());
+        } catch (Exception ex) {
+            log.error("Failed to process member.created: {}", ex.getMessage());
         }
     }
-
-    // ── loan.approved ─────────────────────────────────────────────
 
     @RabbitListener(queues = "loan.approved")
-    public void onLoanApproved(Map<String, Object> event) {
+    public void onLoanApproved(String message) {
         try {
+            Map<String, Object> e = parse(message);
             notificationService.sendFromTemplate(
-                    str(event, "memberId"), str(event, "loanId"),
+                    str(e, "memberId"), str(e, "loanId"),
                     NotificationEvent.LOAN_APPROVED, NotificationChannel.SMS,
-                    str(event, "phoneNumber"),
-                    Map.of(
-                        "amount",    str(event, "amount"),
-                        "reference", str(event, "loanId")
-                    ),
-                    str(event, "tenantId")
+                    str(e, "phoneNumber"),
+                    Map.of("amount", str(e, "amount"), "reference", str(e, "loanId")),
+                    str(e, "tenantId")
             );
-        } catch (Exception e) {
-            log.error("Failed to process loan.approved: {}", e.getMessage());
+        } catch (Exception ex) {
+            log.error("Failed to process loan.approved: {}", ex.getMessage());
         }
     }
-
-    // ── loan.rejected ─────────────────────────────────────────────
 
     @RabbitListener(queues = "loan.rejected")
-    public void onLoanRejected(Map<String, Object> event) {
+    public void onLoanRejected(String message) {
         try {
+            Map<String, Object> e = parse(message);
             notificationService.sendFromTemplate(
-                    str(event, "memberId"), str(event, "loanId"),
+                    str(e, "memberId"), str(e, "loanId"),
                     NotificationEvent.LOAN_REJECTED, NotificationChannel.SMS,
-                    str(event, "phoneNumber"),
-                    Map.of(
-                        "reference", str(event, "loanId"),
-                        "reason",    str(event, "reason")
-                    ),
-                    str(event, "tenantId")
+                    str(e, "phoneNumber"),
+                    Map.of("reference", str(e, "loanId"), "reason", str(e, "reason")),
+                    str(e, "tenantId")
             );
-        } catch (Exception e) {
-            log.error("Failed to process loan.rejected: {}", e.getMessage());
+        } catch (Exception ex) {
+            log.error("Failed to process loan.rejected: {}", ex.getMessage());
         }
     }
-
-    // ── loan.disbursed ────────────────────────────────────────────
 
     @RabbitListener(queues = "loan.disbursed")
-    public void onLoanDisbursed(Map<String, Object> event) {
+    public void onLoanDisbursed(String message) {
         try {
+            Map<String, Object> e = parse(message);
             notificationService.sendFromTemplate(
-                    str(event, "memberId"), str(event, "loanId"),
+                    str(e, "memberId"), str(e, "loanId"),
                     NotificationEvent.LOAN_DISBURSED, NotificationChannel.SMS,
-                    str(event, "phoneNumber"),
-                    Map.of(
-                        "amount",           str(event, "amount"),
-                        "reference",        str(event, "loanId"),
-                        "firstPaymentDate", str(event, "firstPaymentDate")
-                    ),
-                    str(event, "tenantId")
+                    str(e, "phoneNumber"),
+                    Map.of("amount", str(e, "amount"), "reference", str(e, "loanId"),
+                           "firstPaymentDate", str(e, "firstPaymentDate")),
+                    str(e, "tenantId")
             );
-        } catch (Exception e) {
-            log.error("Failed to process loan.disbursed: {}", e.getMessage());
+        } catch (Exception ex) {
+            log.error("Failed to process loan.disbursed: {}", ex.getMessage());
         }
     }
-
-    // ── contribution.missed ───────────────────────────────────────
 
     @RabbitListener(queues = "contribution.missed")
-    public void onContributionMissed(Map<String, Object> event) {
+    public void onContributionMissed(String message) {
         try {
+            Map<String, Object> e = parse(message);
             notificationService.sendFromTemplate(
-                    str(event, "memberId"), str(event, "memberId"),
+                    str(e, "memberId"), str(e, "memberId"),
                     NotificationEvent.CONTRIBUTION_MISSED, NotificationChannel.SMS,
-                    str(event, "phoneNumber"),
-                    Map.of(
-                        "amount",  str(event, "amount"),
-                        "dueDate", str(event, "dueDate")
-                    ),
-                    str(event, "tenantId")
+                    str(e, "phoneNumber"),
+                    Map.of("amount", str(e, "amount"), "dueDate", str(e, "dueDate")),
+                    str(e, "tenantId")
             );
-        } catch (Exception e) {
-            log.error("Failed to process contribution.missed: {}", e.getMessage());
+        } catch (Exception ex) {
+            log.error("Failed to process contribution.missed: {}", ex.getMessage());
         }
     }
-
-    // ── guarantor.consent.requested ───────────────────────────────
 
     @RabbitListener(queues = "guarantor.consent.requested")
-    public void onGuarantorConsentRequested(Map<String, Object> event) {
+    public void onGuarantorConsentRequested(String message) {
         try {
+            Map<String, Object> e = parse(message);
             notificationService.sendFromTemplate(
-                    str(event, "guarantorMemberId"), str(event, "loanId"),
+                    str(e, "guarantorMemberId"), str(e, "loanId"),
                     NotificationEvent.GUARANTOR_CONSENT_REQUESTED, NotificationChannel.SMS,
-                    str(event, "guarantorPhone"),
-                    Map.of(
-                        "borrowerName", str(event, "borrowerName"),
-                        "amount",       str(event, "amount"),
-                        "reference",    str(event, "loanId")
-                    ),
-                    str(event, "tenantId")
+                    str(e, "guarantorPhone"),
+                    Map.of("borrowerName", str(e, "borrowerName"),
+                           "amount", str(e, "amount"), "reference", str(e, "loanId")),
+                    str(e, "tenantId")
             );
-        } catch (Exception e) {
-            log.error("Failed to process guarantor.consent.requested: {}", e.getMessage());
+        } catch (Exception ex) {
+            log.error("Failed to process guarantor.consent.requested: {}", ex.getMessage());
         }
     }
 
-    // ── dividend.declared ─────────────────────────────────────────
-
     @RabbitListener(queues = "dividend.declared")
-    public void onDividendDeclared(Map<String, Object> event) {
+    public void onDividendDeclared(String message) {
         try {
+            Map<String, Object> e = parse(message);
             notificationService.sendFromTemplate(
-                    str(event, "memberId"), str(event, "dividendId"),
+                    str(e, "memberId"), str(e, "dividendId"),
                     NotificationEvent.DIVIDEND_DECLARED, NotificationChannel.SMS,
-                    str(event, "phoneNumber"),
-                    Map.of(
-                        "year",        str(event, "year"),
-                        "amount",      str(event, "amount"),
-                        "paymentDate", str(event, "paymentDate")
-                    ),
-                    str(event, "tenantId")
+                    str(e, "phoneNumber"),
+                    Map.of("year", str(e, "year"), "amount", str(e, "amount"),
+                           "paymentDate", str(e, "paymentDate")),
+                    str(e, "tenantId")
             );
-        } catch (Exception e) {
-            log.error("Failed to process dividend.declared: {}", e.getMessage());
+        } catch (Exception ex) {
+            log.error("Failed to process dividend.declared: {}", ex.getMessage());
         }
+    }
+
+    private Map<String, Object> parse(String message) throws Exception {
+        return objectMapper.readValue(message, new TypeReference<Map<String, Object>>() {});
     }
 
     private String str(Map<String, Object> map, String key) {
