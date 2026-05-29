@@ -140,6 +140,32 @@ public class RabbitListenerConfig {
         });
     }
 
+
+    @Bean
+    public SimpleMessageListenerContainer contributionDepositedContainer() {
+        return container("contribution.deposited", message -> {
+            try {
+                Map<String, Object> e = parse(message);
+                log.info("contribution.deposited received: ref={}", e.get("referenceNumber"));
+                String memberId = str(e, "memberId");
+                String phoneNumber = notificationService.getMemberPhone(memberId);
+                log.info("Sending contribution SMS to: {}", phoneNumber);
+                notificationService.sendFromTemplate(
+                        memberId, str(e, "referenceNumber"),
+                        NotificationEvent.CONTRIBUTION_DEPOSITED, NotificationChannel.SMS,
+                        phoneNumber,
+                        Map.of("amount", str(e, "amount"),
+                               "reference", str(e, "referenceNumber"),
+                               "month", str(e, "periodMonth"),
+                               "year", str(e, "periodYear")),
+                        "default"
+                );
+            } catch (Exception ex) {
+                log.error("Error processing contribution.deposited: {}", ex.getMessage());
+            }
+        });
+    }
+
     private SimpleMessageListenerContainer container(String queue, MessageListener listener) {
         SimpleMessageListenerContainer c = new SimpleMessageListenerContainer(connectionFactory);
         c.setQueueNames(queue);

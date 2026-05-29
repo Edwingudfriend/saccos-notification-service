@@ -1,5 +1,5 @@
 server:
-  port: 8083
+  port: 8087
 
 spring:
   application:
@@ -15,7 +15,7 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: validate
+      ddl-auto: none
     show-sql: false
     properties:
       hibernate:

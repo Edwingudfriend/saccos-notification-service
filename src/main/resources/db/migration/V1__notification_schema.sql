@@ -48,3 +48,6 @@ INSERT IGNORE INTO notification_templates (id, event, channel, language, body) V
 (UUID(), 'DIVIDEND_DECLARED',           'SMS', 'sw', 'Gawio la {{year}} limetangazwa. Sehemu yako: TZS {{amount}}. Itaingizwa akaunti tarehe {{paymentDate}}.'),
 (UUID(), 'OTP_VERIFICATION',            'SMS', 'sw', 'Nambari yako ya uthibitisho ni {{otp}}. Inatumika kwa dakika 5 peke yake. Usimwambie mtu.'),
 (UUID(), 'LOAN_REPAYMENT_REMINDER',     'SMS', 'sw', 'Ukumbusho: Malipo ya mkopo TZS {{amount}} yanastahili tarehe {{dueDate}}. Kumb: {{reference}}.');
+INSERT IGNORE INTO notification_templates (id, event, channel, language, body) VALUES
+(UUID(), 'CONTRIBUTION_DEPOSITED', 'sms', 'sw', 'Mchango wa TZS {{amount}} umepokelewa. Kumbukumbu: {{reference}}. Kipindi: {{month}}/{{year}}. Asante!'),
+(UUID(), 'CONTRIBUTION_DEPOSITED', 'sms', 'en', 'Contribution of TZS {{amount}} received. Ref: {{reference}}. Period: {{month}}/{{year}}. Thank you!');

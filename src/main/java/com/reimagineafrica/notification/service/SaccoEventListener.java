@@ -135,6 +135,7 @@ public class SaccoEventListener {
             log.error("Failed to process dividend.declared: {}", ex.getMessage());
         }
     }
+}
 
     private Map<String, Object> parse(String message) throws Exception {
         return objectMapper.readValue(message, new TypeReference<Map<String, Object>>() {});

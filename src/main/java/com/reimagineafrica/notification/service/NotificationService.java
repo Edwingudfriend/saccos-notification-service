@@ -19,6 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import org.springframework.jdbc.core.JdbcTemplate;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -34,6 +35,7 @@ public class NotificationService {
     private final NotificationTemplateRepository templateRepo;
     private final NextSmsClient smsClient;
     private final FcmClient fcmClient;
+    private final JdbcTemplate jdbcTemplate;
 
     // ── Send via template ─────────────────────────────────────────
 
@@ -140,5 +142,16 @@ public class NotificationService {
     @Transactional(readOnly = true)
     public Page<Notification> getByReference(String referenceId, Pageable pageable) {
         return notificationRepo.findByReferenceIdOrderByCreatedAtDesc(referenceId, pageable);
+    }
+
+    public String getMemberPhone(String memberId) {
+        try {
+            return jdbcTemplate.queryForObject(
+                "SELECT phone_number FROM member_db.members WHERE id = ?",
+                String.class, memberId);
+        } catch (Exception e) {
+            log.warn("Could not find phone for member {}: {}", memberId, e.getMessage());
+            return "";
+        }
     }
 }
